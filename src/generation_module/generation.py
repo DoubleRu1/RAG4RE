@@ -16,8 +16,15 @@ class LLM(object):
         Args:
             model_id (str, optional): model name from Hugging Face. Defaults to "google/flan-t5-xl".
         """
-        self.maxmem={i:f'{int(torch.cuda.mem_get_info()[0]/1024**3)-2}GB' for i in range(4)}
-        self.maxmem['cpu']='300GB'
+        self.model_id = model_id
+        self.maxmem = {"cpu": "300GB"}
+        if torch.cuda.is_available():
+            device_count = torch.cuda.device_count()
+            for i in range(device_count):
+                with torch.cuda.device(i):
+                    free_gb = int(torch.cuda.mem_get_info()[0] / 1024**3)
+                self.maxmem[i] = f"{max(free_gb - 2, 1)}GB"
+
         if model_id=="google/flan-t5-xl":
             self.model, self.tokenizer = self.get_model(model_id)
         else: 
@@ -36,11 +43,14 @@ class LLM(object):
         """
         tokenizer = T5Tokenizer.from_pretrained(model_id)
  
-        model = T5ForConditionalGeneration.from_pretrained(model_id, 
-                                                    device_map="auto", 
-                                                    load_in_8bit=False, 
-                                                    torch_dtype=torch.float16,
-                                                    max_memory=self.maxmem)
+        dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+        model = T5ForConditionalGeneration.from_pretrained(
+            model_id,
+            device_map="auto",
+            load_in_8bit=False,
+            torch_dtype=dtype,
+            max_memory=self.maxmem,
+        )
         return model,tokenizer
     
     def get_prediction(self, prompt, length=30):
@@ -55,21 +65,27 @@ class LLM(object):
         Returns:
             response (str): response from the model
         """
-        if "Llama" in self.model:
-            return self.get_prediction_llama3(self.model, self.tokenizer, prompt, length)
+        model_id_lower = self.model_id.lower()
+        if "llama-3" in model_id_lower or "llama3" in model_id_lower:
+            return self.get_prediction_llama3(prompt, length)
     
-        inputs = self.tokenizer(prompt, add_special_tokens=True, max_length=526,return_tensors="pt").input_ids.to("cuda")
+        model_device = self.model.device
+        if model_device.type == "cpu" and torch.cuda.is_available():
+            model_device = torch.device("cuda")
+        inputs = self.tokenizer(prompt, add_special_tokens=True, max_length=526,return_tensors="pt").input_ids.to(model_device)
         
         outputs = self.model.generate(inputs, max_new_tokens=length)
         
         response = self.tokenizer.batch_decode(outputs, skip_special_tokens=True)
         
-        return response
+        return response[0]
 
 
-    def get_prediction_llama3(model,tokenizer, prompt, length=250,stype='greedy'):
+    def get_prediction_llama3(self, prompt, length=250, stype='greedy'):
+        model = self.model
+        tokenizer = self.tokenizer
         messages = [
-        {"role": "system", "content": "You are a  chatbot who always responds the question"},
+        {"role": "system", "content": "You are a chatbot who extracts relations from text and returns only the relation label."},
         {"role": "user", "content": prompt},
         ]
 
@@ -110,9 +126,14 @@ class LLM(object):
         """
 
         tokenizer = AutoTokenizer.from_pretrained(model_id)
-        model = AutoModelForCausalLM.from_pretrained(model_id, 
-                                                    device_map="balanced", 
-                                                    load_in_8bit=False, 
-                                                    torch_dtype=torch.float16,
-                                                    max_memory=self.maxmem)
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+        dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+        model = AutoModelForCausalLM.from_pretrained(
+            model_id,
+            device_map="auto",
+            load_in_8bit=False,
+            torch_dtype=dtype,
+            max_memory=self.maxmem,
+        )
         return model,tokenizer

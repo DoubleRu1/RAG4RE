@@ -14,8 +14,11 @@ PREFIX_PATH = "/".join(os.path.dirname(os.path.abspath(__file__)).split("/")[:-2
 
 def read_json(path):
     """ Read json file"""
-    with open(path, 'r') as f:
-        data = json.load(f)
+    with open(path, "r", encoding="utf-8") as f:
+        if path.lower().endswith(".jsonl"):
+            data = [json.loads(line) for line in f if line.strip()]
+        else:
+            data = json.load(f)
     return data
 
 def write_json(path, data):
@@ -40,7 +43,19 @@ def compute_sentence(data):
     print("The embeddings will be compted for {0} sentences".format(len(data)))
 
     for i, line in enumerate(data):
-        sent = " ".join(line['tokens'])
+        if isinstance(line, str):
+            sent = line
+        elif isinstance(line.get("tokens"), list):
+            sent = " ".join([str(tok) for tok in line["tokens"]])
+        elif isinstance(line.get("tokens"), str):
+            sent = line["tokens"]
+        else:
+            sent = (
+                line.get("sentence")
+                or line.get("text")
+                or line.get("sent")
+                or ""
+            )
         clean_sent = clean_sentence(sent)
         embeddings = model.encode(clean_sent)
         sent_embeddings.append(embeddings)

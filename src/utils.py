@@ -4,9 +4,12 @@ import logging
 import sys
 
 def read_json(path):
-    """ Read a json file from the given path."""
-    with open(path, 'r') as f:
-        data = json.load(f)
+    """Read a json/jsonl file from the given path."""
+    with open(path, "r", encoding="utf-8") as f:
+        if path.lower().endswith(".jsonl"):
+            data = [json.loads(line) for line in f if line.strip()]
+        else:
+            data = json.load(f)
     return data
 
 def write_json(path, data):

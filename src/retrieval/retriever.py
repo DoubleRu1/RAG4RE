@@ -6,7 +6,7 @@ SCRIPT_DIR = os.path.dirname(os.path.realpath(os.path.join(os.getcwd(), os.path.
 sys.path.append(os.path.normpath(os.path.join(SCRIPT_DIR, PACKAGE_PARENT)))
 
 from refinement import postprocessing
-from data_augmentation.prompt_generation.prompt_generation import generate_prompts
+from data_augmentation.prompt_generation.prompt_generation import generate_prompts, normalize_relation_example
 from generation_module.generation import LLM
 import configparser
 from utils import read_json, write_json
@@ -33,20 +33,27 @@ def benchmark_data_augmentation_call(config_file_path):
     relations = read_json(relations_path)
 
     if dataset != "semeval":
-        relations = relations.keys()
+        if isinstance(relations, dict):
+            relation_list = list(relations.keys())
+        elif isinstance(relations, list):
+            relation_list = [str(item) for item in relations]
+        else:
+            raise ValueError("relations_path must point to a json/jsonl dict or list for non-semeval datasets.")
     else:
-        relations = relations
+        relation_list = relations
     test_data = read_json(test_data_path)
+    if dataset != "semeval":
+        test_data = [normalize_relation_example(item) for item in test_data]
 
     if prompt_type == "rag":
         # print("RAG")
         output_prompts_path = config["OUTPUT"]["rag_test_prompts_path"]
         output_responses_path = config["OUTPUT"]["rag_test_responses_path"]
-        prompts = generate_prompts(test_data, relations, similar_sentences,  dataset, prompt_type)
+        prompts = generate_prompts(test_data, relation_list, similar_sentences,  dataset, prompt_type)
     else:
         output_prompts_path = config["OUTPUT"]["simple_prompt_path"]
         output_responses_path = config["OUTPUT"]["simple_prompt_responses_path"]
-        prompts = generate_prompts(test_data, relations, similar_sentences,  dataset, prompt_type)
+        prompts = generate_prompts(test_data, relation_list, similar_sentences,  dataset, prompt_type)
 
     llm_instance = LLM(model_name)
     
@@ -55,13 +62,13 @@ def benchmark_data_augmentation_call(config_file_path):
     for prompt in prompts:
         prompt = prompt["prompt"]
 
-        if not "t5" in model_name:
-            prompt = """[INST]{prompt}[/INST] Answer:"""
+        if "t5" not in model_name.lower():
+            prompt = f"[INST]{prompt}[/INST] Answer:"
 
         response = llm_instance.get_prediction(prompt)
         responses.append(response)
 
-    responses = postprocessing(dataset, test_data, responses, relations, model_name)
+    responses = postprocessing(dataset, test_data, responses, relation_list, model_name)
     
     write_json(output_prompts_path, prompts)
     write_json(output_responses_path, responses)

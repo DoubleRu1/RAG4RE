@@ -15,8 +15,11 @@ from prompt_templates import get_zero_shot_template_tacred, get_zero_shot_templa
 def read_json(path):
     """Read json file"""
 
-    with open(path, 'r') as f:
-        data = json.load(f)
+    with open(path, "r", encoding="utf-8") as f:
+        if path.lower().endswith(".jsonl"):
+            data = [json.loads(line) for line in f if line.strip()]
+        else:
+            data = json.load(f)
 
     return data
 
@@ -27,6 +30,78 @@ def write_json(path, data):
     print(path)
     with open(path, 'w', encoding="utf-8") as f:
         json.dump(data, f, indent=4, ensure_ascii=False)
+
+def _text_to_tokens(line):
+    if isinstance(line.get("tokens"), list):
+        return [str(t) for t in line["tokens"]]
+    if isinstance(line.get("tokens"), str):
+        return line["tokens"].split()
+
+    text = (
+        line.get("sentence")
+        or line.get("text")
+        or line.get("sent")
+        or line.get("context")
+        or ""
+    )
+    if not text:
+        return []
+    return str(text).split()
+
+def _extract_entity(line, primary_keys, fallback_entities, fallback_idx):
+    for key in primary_keys:
+        value = line.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip(), line.get(f"{key}_type", "")
+        if isinstance(value, dict):
+            name = value.get("text") or value.get("name") or value.get("mention")
+            etype = value.get("type", "")
+            if name:
+                return str(name), str(etype)
+
+    entities = line.get(fallback_entities, [])
+    if isinstance(entities, list) and len(entities) > fallback_idx and isinstance(entities[fallback_idx], dict):
+        ent = entities[fallback_idx]
+        name = ent.get("text") or ent.get("name") or ent.get("mention")
+        etype = ent.get("type", "")
+        if name:
+            return str(name), str(etype)
+
+    text = " ".join(_text_to_tokens(line))
+    if "<e1>" in text and "<e2>" in text:
+        if fallback_idx == 0:
+            m = re.findall("<e1>(.*?)</e1>", text, re.DOTALL)
+        else:
+            m = re.findall("<e2>(.*?)</e2>", text, re.DOTALL)
+        if m:
+            return " ".join(m).strip(), ""
+
+    return ("HEAD" if fallback_idx == 0 else "TAIL"), ""
+
+def normalize_relation_example(line):
+    tokens = _text_to_tokens(line)
+    subject, subject_type = _extract_entity(
+        line,
+        ["subject", "subj", "head", "entity1", "arg1"],
+        "entities",
+        0,
+    )
+    obj, object_type = _extract_entity(
+        line,
+        ["object", "obj", "tail", "entity2", "arg2"],
+        "entities",
+        1,
+    )
+    relation = line.get("relation") or line.get("label") or line.get("rel") or "no_relation"
+
+    return {
+        "tokens": tokens,
+        "subject": subject,
+        "object": obj,
+        "relation": relation,
+        "subject_type": subject_type,
+        "object_type": object_type,
+    }
 
 def tacred_format(test_data, relations, similar_sentences, type="rag"):
     """Regenerate prompt for tacred and its variants like tacrev, re-tacred
@@ -140,16 +215,17 @@ def generate_prompts(sentences, relations, similar_sentences,  dataset="tacred",
 
     if dataset == "semeval":
         
-        if type == "simple":
+        if prompt_type == "simple":
             prompts = semeval_format(sentences, relations, similar_sentences)
         else:
             prompts = semeval_format(sentences, relations, similar_sentences, prompt_type)
     else:
+        normalized_sentences = [normalize_relation_example(item) for item in sentences]
 
         if prompt_type == "simple":
-            prompts = tacred_format(sentences, relations, similar_sentences)
+            prompts = tacred_format(normalized_sentences, relations, similar_sentences)
         else:
-            prompts = tacred_format(sentences, relations, similar_sentences, prompt_type)
+            prompts = tacred_format(normalized_sentences, relations, similar_sentences, prompt_type)
     
     return prompts
 if  __name__ == "__main__":

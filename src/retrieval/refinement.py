@@ -1,5 +1,7 @@
 import re
 
+TACRED_LIKE_DATASETS = {"tacred", "tacrev", "re-tacred"}
+
 def clean_t5_response(dataset_name, test_data, test_results, relations):
     """ Refine t5 response.
     Args:
@@ -27,10 +29,10 @@ def clean_t5_response(dataset_name, test_data, test_results, relations):
         predictions.append(test)
    
     preds = []
-    if dataset_name != "semeval":
+    if dataset_name in TACRED_LIKE_DATASETS:
         for i, sentence in enumerate(test_data):
             
-            subj = "org" if "ORGANIZATION" == sentence["subject_type"] else "per"
+            subj = "org" if "ORGANIZATION" == sentence.get("subject_type", "") else "per"
 
             if predictions[i] in ["alternate_names", "parents"]:
                 preds.append(subj+":"+ predictions[i])
@@ -117,10 +119,10 @@ def find_relations_inanswer(dataset_name, data, responses, relations):
         clean_data[str(i)] =  "no_relation" if relation_types[0] == "no relation" else relation_types[0]
     # write_json("/Users/sefika/Documents/RAG4RE/results/llama2_7b/returned_responses/llama_7b_tacred_simple_clean.json", clean_data)
     preds = []
-    if dataset_name != "semeval":
+    if dataset_name in TACRED_LIKE_DATASETS:
         for i, sentence in enumerate(data):
             # print(sentence)
-            subj = "org" if "ORGANIZATION" == sentence["subject_type"] else "per"
+            subj = "org" if "ORGANIZATION" == sentence.get("subject_type", "") else "per"
 
             if clean_data[str(i)] in ["alternate_names", "parents"]:
                 preds.append(subj+":"+clean_data[str(i)])

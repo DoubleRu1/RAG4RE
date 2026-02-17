@@ -14,8 +14,11 @@ import configparser
 
 def read_json(path):
     """ Read json file"""
-    with open(path, 'r') as f:
-        data = json.load(f)
+    with open(path, "r", encoding="utf-8") as f:
+        if path.lower().endswith(".jsonl"):
+            data = [json.loads(line) for line in f if line.strip()]
+        else:
+            data = json.load(f)
     return data
 
 def write_json(path, data):
@@ -25,7 +28,15 @@ def write_json(path, data):
         
     with open(path, 'w', encoding="utf-8") as f:
         json.dump(data, f, indent=4, ensure_ascii=False)
-        
+
+def get_sentence_text(item):
+    if isinstance(item, str):
+        return item
+    if isinstance(item.get("tokens"), list):
+        return " ".join([str(tok) for tok in item["tokens"]])
+    if isinstance(item.get("tokens"), str):
+        return item["tokens"]
+    return item.get("sentence") or item.get("text") or item.get("sent") or ""
 
 
 def compute_similarity(test_data, train_data, train_embeddings, test_embeddings):
@@ -51,7 +62,7 @@ def compute_similarity(test_data, train_data, train_embeddings, test_embeddings)
 
             train_emb = train_embeddings[train_index]
             sim = np.dot(test_emb,train_emb)/(norm(test_emb)*norm(train_emb))
-            train_sentence = " ".join(train_line['tokens'])
+            train_sentence = get_sentence_text(train_line)
                 
             context =  train_sentence
             train_similarities.append({"train":train_index, "simscore": sim, "sentence":context})
@@ -108,9 +119,9 @@ def main(test_file, train_file, train_emb, test_emb, output_sim_path, dataset="s
     if dataset == "semeval":
         similarities = semeval_compute_similarity(test_data, train_data, train_embeddings, test_embeddings)
     else:
-        similarities = compute_similarity(test_data, train_data, train_embeddings, test_embeddings, output_sim_path)
+        similarities = compute_similarity(test_data, train_data, train_embeddings, test_embeddings)
 
-    write_json(similarities, output_sim_path)
+    write_json(output_sim_path, similarities)
 
 
 if __name__ == "__main__":
@@ -123,5 +134,6 @@ if __name__ == "__main__":
     train_emb = config["SIMILARITY"]["train_emb"]
     test_emb = config["SIMILARITY"]["test_emb"]
     output_sim_path = config["SIMILARITY"]["output_index"]
+    dataset = config["SETTINGS"].get("dataset", "semeval")
 
-    main(test_file, train_file, train_emb, test_emb, output_sim_path)
+    main(test_file, train_file, train_emb, test_emb, output_sim_path, dataset)
