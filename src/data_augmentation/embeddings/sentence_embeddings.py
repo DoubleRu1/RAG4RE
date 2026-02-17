@@ -11,6 +11,13 @@ PACKAGE_PARENT = '..'
 SCRIPT_DIR = os.path.dirname(os.path.realpath(os.path.join(os.getcwd(), os.path.expanduser(__file__))))
 sys.path.append(os.path.normpath(os.path.join(SCRIPT_DIR, PACKAGE_PARENT)))
 PREFIX_PATH = "/".join(os.path.dirname(os.path.abspath(__file__)).split("/")[:-2]) + "/"
+PROJECT_ROOT = os.path.dirname(PREFIX_PATH.rstrip("/"))
+
+def resolve_path(path):
+    """Resolve configured paths against repository root when relative."""
+    if os.path.isabs(path):
+        return path
+    return os.path.normpath(os.path.join(PROJECT_ROOT, path))
 
 def read_json(path):
     """ Read json file"""
@@ -84,8 +91,8 @@ if __name__ == "__main__":
     config = configparser.ConfigParser()
     config.read(PREFIX_PATH+"config.ini")
 
-    input_file = config["EMBEDDING"]["input_embedding_path"]
-    output_file = config["EMBEDDING"]["output_embedding_path"]
+    input_file = resolve_path(config["EMBEDDING"]["input_embedding_path"])
+    output_file = resolve_path(config["EMBEDDING"]["output_embedding_path"])
     data = read_json(input_file)
     embeddings = compute_sentence(data)
     write_embeddings(embeddings, output_file)

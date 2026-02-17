@@ -8,9 +8,16 @@ PACKAGE_PARENT = '..'
 SCRIPT_DIR = os.path.dirname(os.path.realpath(os.path.join(os.getcwd(), os.path.expanduser(__file__))))
 sys.path.append(os.path.normpath(os.path.join(SCRIPT_DIR, PACKAGE_PARENT)))
 PREFIX_PATH = "/".join(os.path.dirname(os.path.abspath(__file__)).split("/")[:-2]) + "/"
+PROJECT_ROOT = os.path.dirname(PREFIX_PATH.rstrip("/"))
 
 
 import configparser
+
+def resolve_path(path):
+    """Resolve configured paths against repository root when relative."""
+    if os.path.isabs(path):
+        return path
+    return os.path.normpath(os.path.join(PROJECT_ROOT, path))
 
 def read_json(path):
     """ Read json file"""
@@ -129,11 +136,11 @@ if __name__ == "__main__":
     config = configparser.ConfigParser()
     config.read(PREFIX_PATH+"config.ini")
 
-    test_file = config["SIMILARITY"]["test_file"]
-    train_file = config["SIMILARITY"]["train_file"]
-    train_emb = config["SIMILARITY"]["train_emb"]
-    test_emb = config["SIMILARITY"]["test_emb"]
-    output_sim_path = config["SIMILARITY"]["output_index"]
+    test_file = resolve_path(config["SIMILARITY"]["test_file"])
+    train_file = resolve_path(config["SIMILARITY"]["train_file"])
+    train_emb = resolve_path(config["SIMILARITY"]["train_emb"])
+    test_emb = resolve_path(config["SIMILARITY"]["test_emb"])
+    output_sim_path = resolve_path(config["SIMILARITY"]["output_index"])
     dataset = config["SETTINGS"].get("dataset", "semeval")
 
     main(test_file, train_file, train_emb, test_emb, output_sim_path, dataset)
